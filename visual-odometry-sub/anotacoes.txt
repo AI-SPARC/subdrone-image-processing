@@ -1,0 +1,10 @@
+Pre processamento para filtrar algumas coisas como som
+tentando fazer os metodos funcionarem, ate agr ta aquele print em que eles começam de pontos diferentes no grafico, pode so ser questao com as matrizes ou outras coisa assim
+O do print eu não lembro exatamente como o codigo tava quando ele foi feito, mas tinha aquele erro de attempt limit, isso pode ser o problema do plot do print
+se alguem for rodar, tem que baixar o ffmpeg e definir o path
+lembrar de colocar no virtual enviroment antes de rodar tudo
+virtual\Scripts\activate 
+python preprocess_videos.py para processar os videos em raw
+roda a main
+
+o código atual quando adicionei o resize nao funcionou na web, ja o sem resize funcionou mas os graficos ainda estao em pontos diferentes

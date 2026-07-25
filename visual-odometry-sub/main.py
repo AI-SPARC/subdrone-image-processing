@@ -1,242 +1,175 @@
+import os
+
 import cv2
 import numpy as np
 import plotly.graph_objects as go
+from plotly.subplots import make_subplots
+
 from vo import VisualOdometry
 from utils import preprocess_frame
 
-video_path = "D:/guilh/Downloads/pibiti mn2001/visual-odometry-sub/dataset/processed/Black Eder_090419_costelas do navio_2_vo.mp4"
-SCALE = 0.5  # Mude para 1.0 para resolução original
+# ===================== CONFIGURACOES =====================
+VIDEO_PATH = "C:/Users/guilh/Projetos/subdrone-image-processing/visual-odometry-sub/dataset/processed/Black Eder_090419_costelas do navio_2_vo.mp4"
 
-methods = ["ORB", "SIFT", "KLT"]
-trajectories = {}
+# Distancia (em frames) entre keyframes. A 30fps, FRAME_STEP=3 ~ 0.1s.
+# Baseline maior = movimento maior entre frames = matriz essencial mais
+# estavel. Se ficar ruidoso, aumente; se pular demais, diminua.
+FRAME_STEP = 3
 
-for method in methods:
-    print(f"\nRodando método: {method}")
+# Apos MAX_SKIP falhas seguidas, ressincroniza o keyframe (avanca prev_gray
+# para o frame atual). Evita que um trecho ruim (virada/turbidez) congele o
+# keyframe no passado e trave a odometria pelo resto do video.
+MAX_SKIP = 2
 
-    cap = cv2.VideoCapture(video_path)
+# Limite de frames a processar (None = video inteiro).
+MAX_FRAMES = None
+
+# fx = fy = FX_SCALE * largura. Isto e um CHUTE: o ideal e calibrar a
+# camera (de preferencia dentro d'agua) e substituir K por valores reais.
+FX_SCALE = 1.0
+
+METHODS = ["ORB", "SIFT", "KLT"]
+COLORS = {"ORB": "blue", "SIFT": "green", "KLT": "red"}
+# ========================================================
+
+
+def get_output_path():
+    results_dir = "results"
+    os.makedirs(results_dir, exist_ok=True)
+    counter = 1
+    while os.path.exists(os.path.join(results_dir, f"resultado_vo_{counter}.html")):
+        counter += 1
+    return os.path.join(results_dir, f"resultado_vo_{counter}.html")
+
+
+def run_method(method):
+    cap = cv2.VideoCapture(VIDEO_PATH)
 
     ret, frame = cap.read()
     if not ret:
-        raise Exception("Erro ao ler vídeo.")
+        raise Exception("Erro ao ler video.")
 
     prev_gray = preprocess_frame(frame)
 
-    # Matriz intrínseca baseada no frame preprocessado
-    fx = 800 * SCALE
-    fy = 800 * SCALE
-    cx = (prev_gray.shape[1] / 2)
-    cy = (prev_gray.shape[0] / 2)
-
-
+    h, w = prev_gray.shape[:2]
+    fx = fy = FX_SCALE * w
+    cx, cy = w / 2, h / 2
     K = np.array([[fx, 0, cx],
                   [0, fy, cy],
                   [0, 0, 1]])
 
     vo = VisualOdometry(K, method=method)
 
-    trajectory = []
+    # A trajetoria SEMPRE comeca na origem (todos os metodos partem de 0,0,0).
+    trajectory = [(0.0, 0.0, 0.0, 0)]
 
-    frame_count = 0
+    frame_idx = 0
+    n_ok = 0
+    n_fail = 0
+    consec_fail = 0
+
     while True:
         ret, frame = cap.read()
         if not ret or frame is None:
             break
+        frame_idx += 1
 
-        h, w = frame.shape[:2]
-        frame = cv2.resize(frame, (int(w*SCALE), int(h*SCALE)))
+        if frame_idx % FRAME_STEP != 0:
+            continue
 
         gray = preprocess_frame(frame)
+        t, _, ok = vo.process_frame(prev_gray, gray)
 
-        t = vo.process_frame(prev_gray, gray)
+        if ok:
+            # So registra e avanca o keyframe quando a estimativa foi confiavel.
+            trajectory.append((t[0][0], t[1][0], t[2][0], frame_idx))
+            prev_gray = gray
+            consec_fail = 0
+            n_ok += 1
+        else:
+            # Falha transiente: mantem prev_gray por ate MAX_SKIP tentativas
+            # (baseline cresce e tende a estabilizar). Se persistir, ressincroniza
+            # para nao travar a odometria no resto do video.
+            n_fail += 1
+            consec_fail += 1
+            if consec_fail >= MAX_SKIP:
+                prev_gray = gray
+                consec_fail = 0
 
-        trajectory.append((t[0][0], t[1][0], t[2][0]))
+        if frame_idx % 90 == 0:
+            print(f"  [{method}] frame {frame_idx} | ok={n_ok} fail={n_fail}")
 
-        prev_gray = gray
-        frame_count += 1
-        if frame_count % 10 == 0:
-            print(f"{method} processando frame {frame_count}")
-
-        if frame_count > 300:
+        if MAX_FRAMES is not None and frame_idx >= MAX_FRAMES:
             break
 
-
     cap.release()
+    print(f"  [{method}] concluido: {n_ok} keyframes validos, {n_fail} descartados")
+    return np.array(trajectory)
 
-    trajectories[method] = np.array(trajectory)
 
-# ================== PLOT 3D ==================
+def main():
+    trajectories = {}
+    for method in METHODS:
+        print(f"\nRodando metodo: {method}")
+        trajectories[method] = run_method(method)
 
-fig = go.Figure()
+    # ------- resumo textual -------
+    for method in METHODS:
+        traj = trajectories[method]
+        mid = len(traj) // 2
+        print(f"\n{method}: {len(traj)} pontos")
+        print(f"  inicio: {np.round(traj[0][:3], 3)}")
+        print(f"  meio:   {np.round(traj[mid][:3], 3)}")
+        print(f"  fim:    {np.round(traj[-1][:3], 3)}")
 
-colors = {
-    "ORB": "blue",
-    "SIFT": "green",
-    "KLT": "red"
-}
-
-for method in methods:
-    traj = trajectories[method]
-
-    fig.add_trace(go.Scatter3d(
-        x=traj[:, 0],
-        y=traj[:, 1],
-        z=traj[:, 2],
-        mode='lines',
-        name=method,
-        line=dict(width=4, color=colors[method])
-    ))
-
-fig.update_layout(
-    title="Comparação 3D - ORB vs SIFT vs KLT",
-    scene=dict(
-        xaxis_title="X",
-        yaxis_title="Y",
-        zaxis_title="Z",
-        aspectmode='data'
+    # ------- plot: 3D + 3 projecoes 2D -------
+    # As projecoes ajudam a identificar qual plano corresponde ao "mapa"
+    # real (depende da orientacao da camera: para frente vs para baixo).
+    fig = make_subplots(
+        rows=2, cols=2,
+        specs=[[{"type": "scene"}, {"type": "xy"}],
+               [{"type": "xy"}, {"type": "xy"}]],
+        subplot_titles=("3D (X, Y, Z)", "Topo: X vs Z",
+                        "Frontal: X vs Y", "Lateral: Z vs Y"),
     )
-)
 
-fig.show()
+    for method in METHODS:
+        traj = trajectories[method]
+        x, y, z = traj[:, 0], traj[:, 1], traj[:, 2]
+        c = COLORS[method]
 
+        fig.add_trace(go.Scatter3d(
+            x=x, y=y, z=z, mode="lines", name=method,
+            line=dict(width=4, color=c), legendgroup=method,
+        ), row=1, col=1)
 
+        fig.add_trace(go.Scatter(
+            x=x, y=z, mode="lines", name=method, line=dict(color=c),
+            legendgroup=method, showlegend=False,
+        ), row=1, col=2)
 
+        fig.add_trace(go.Scatter(
+            x=x, y=y, mode="lines", name=method, line=dict(color=c),
+            legendgroup=method, showlegend=False,
+        ), row=2, col=1)
 
+        fig.add_trace(go.Scatter(
+            x=z, y=y, mode="lines", name=method, line=dict(color=c),
+            legendgroup=method, showlegend=False,
+        ), row=2, col=2)
 
-"""
-import cv2
-import numpy as np
-import plotly.graph_objects as go
-from vo import VisualOdometry
-from utils import preprocess_frame
+    fig.update_layout(
+        title="Odometria visual - ORB vs SIFT vs KLT (escala arbitraria)",
+        scene=dict(aspectmode="data",
+                   xaxis_title="X", yaxis_title="Y", zaxis_title="Z"),
+    )
+    for r, col in [(1, 2), (2, 1), (2, 2)]:
+        fig.update_yaxes(scaleanchor="x", scaleratio=1, row=r, col=col)
 
-#video_path = r"D:\guilh\Downloads\pibiti mn2001\visual-odometry-sub\dataset\Black Eder_090419_costelas do navio_2.MP4"
-cap = cv2.VideoCapture(video_path)
-
-ret, frame = cap.read()
-prev_gray = preprocess_frame(frame)
-
-# ===== MATRIZ INTRÍNSECA (exemplo) =====
-fx = fy = 800
-cx = prev_gray.shape[1] / 2
-cy = prev_gray.shape[0] / 2
-
-K = np.array([[fx, 0, cx],
-              [0, fy, cy],
-              [0, 0, 1]])
-
-vo = VisualOdometry(K, method="KLT")
-
-trajectory = []
-
-while True:
-    ret, frame = cap.read()
-    if not ret or frame is None:
-        break
-
-    gray = preprocess_frame(frame)
-
-    t = vo.process_frame(prev_gray, gray)
-
-    trajectory.append((t[0][0], t[1][0], t[2][0]))
-
-    prev_gray = gray
-
-cap.release()
-
-trajectory = np.array(trajectory)
-
-# ===== Plot 3D interativo =====
-fig = go.Figure()
-
-fig.add_trace(go.Scatter3d(
-    x=trajectory[:, 0],
-    y=trajectory[:, 1],
-    z=trajectory[:, 2],
-    mode='lines',
-    line=dict(width=4)
-))
-
-fig.update_layout(
-    title="3D Visual Odometry Trajectory",
-    scene=dict(aspectmode='data')
-)
-
-fig.show()
-"""
+    output_path = get_output_path()
+    fig.write_html(output_path)
+    print(f"\nGrafico salvo em: {output_path}")
 
 
-
-"""""
-# ================== PLOT 3D ==================
-fig = plt.figure()
-ax = fig.add_subplot(111, projection='3d')
-
-ax.plot(trajectory[:, 0],
-        trajectory[:, 1],
-        trajectory[:, 2])
-
-ax.set_xlabel("X")
-ax.set_ylabel("Y")
-ax.set_zlabel("Z")
-ax.set_title("3D Visual Odometry Trajectory")
-
-# Ajuste automático de escala para não distorcer
-max_range = np.array([
-    trajectory[:,0].max()-trajectory[:,0].min(),
-    trajectory[:,1].max()-trajectory[:,1].min(),
-    trajectory[:,2].max()-trajectory[:,2].min()
-]).max() / 2.0
-
-mid_x = (trajectory[:,0].max()+trajectory[:,0].min()) * 0.5
-mid_y = (trajectory[:,1].max()+trajectory[:,1].min()) * 0.5
-mid_z = (trajectory[:,2].max()+trajectory[:,2].min()) * 0.5
-
-ax.set_xlim(mid_x - max_range, mid_x + max_range)
-ax.set_ylim(mid_y - max_range, mid_y + max_range)
-ax.set_zlim(mid_z - max_range, mid_z + max_range)
-
-plt.show()
-
-"""
-
-
-""""
-cap = cv2.VideoCapture(video_path)
-
-ret, frame = cap.read()
-prev_gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-
-# Matriz intrínseca (exemplo)
-fx = fy = 800
-cx = frame.shape[1] / 2
-cy = frame.shape[0] / 2
-
-K = np.array([[fx, 0, cx],
-              [0, fy, cy],
-              [0, 0, 1]])
-
-vo = VisualOdometry(K, method="KLT")  # ORB, SIFT ou KLT
-
-trajectory = []
-
-while True:
-    ret, frame = cap.read()
-    if not ret:
-        break
-
-    gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-
-    t = vo.process_frame(prev_gray, gray)
-    trajectory.append((t[0][0], t[2][0]))
-
-    prev_gray = gray
-
-cap.release()
-
-trajectory = np.array(trajectory)
-plt.plot(trajectory[:, 0], trajectory[:, 1])
-plt.xlabel("X")
-plt.ylabel("Z")
-plt.title("Trajectory")
-plt.show()
-"""
+if __name__ == "__main__":
+    main()

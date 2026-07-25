@@ -1,0 +1,11 @@
+# Ambiente virtual
+.venv/
+
+# Cache do Python
+__pycache__/
+*.pyc
+
+# Dados (vídeos brutos/processados)
+dataset/
+
+# Obs.: os resultados (results/) SÃO versionados de propósito.

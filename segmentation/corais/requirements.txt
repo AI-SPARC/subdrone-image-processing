@@ -1,0 +1,22 @@
+# Dependencias do projeto de segmentacao de corais + analise de saude.
+# Recomendado: Python 3.10+ e um ambiente virtual proprio (venv).
+#
+#   python -m venv venv
+#   # Windows:   venv\Scripts\activate
+#   # Linux/mac: source venv/bin/activate
+#   pip install -r requirements.txt
+#
+# Os autotestes dos modulos de analise (coral_health, underwater_color_correction,
+# convert_annotations selftest, calibrate_health selftest, evaluate selftest)
+# rodam apenas com NumPy. As libs abaixo sao necessarias para treinar e inferir.
+
+# --- Obrigatorio para treinar / inferir ---
+ultralytics>=8.3.0     # YOLO deteccao e segmentacao
+opencv-python>=4.8.0   # leitura de imagem, contornos (mask2yolo), CLAHE
+numpy>=1.24            # nucleo da analise de cor e saude
+torch>=2.0             # backend do ultralytics (instale a build CUDA se tiver GPU)
+
+# --- Opcional, mas util ---
+# pillow>=9.0          # fallback de leitura de imagem se nao tiver OpenCV
+# matplotlib>=3.7      # graficos de evaluate.py curves --plot
+# pyyaml>=6.0          # ja vem com ultralytics; usado pelo data.yaml

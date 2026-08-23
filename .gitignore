@@ -1,0 +1,36 @@
+# Ambientes virtuais
+venv/
+.venv/
+virtual/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+
+# Datasets: imagens e rotulos ficam fora do controle de versao.
+# Cada subprojeto documenta no README como obter e reproduzir os dados.
+segmentation/corais/train/
+segmentation/corais/valid/
+segmentation/corais/test/
+segmentation/corais/calib/
+segmentation/corais/calib_cc/
+segmentation/peixe-leao/train/
+segmentation/peixe-leao/valid/
+segmentation/peixe-leao/test/
+visual-odometry-sub/dataset/
+
+# Pesos e modelos exportados. As metricas e os graficos dos treinos
+# (results.csv, args.yaml, *.png) continuam versionados.
+*.pt
+*.onnx
+*.torchscript
+**/weights/
+trained_models/
+
+# Saidas locais de inferencia e cache
+saida*/
+resumo_saude.csv
+curvas.png
+labels.cache
+*.log

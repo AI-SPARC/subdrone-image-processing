@@ -8,29 +8,22 @@ from plotly.subplots import make_subplots
 from vo import VisualOdometry
 from utils import preprocess_frame
 
-# ===================== CONFIGURACOES =====================
 VIDEO_PATH = "C:/Users/guilh/Projetos/subdrone-image-processing/visual-odometry-sub/dataset/processed/Black Eder_090419_costelas do navio_2_vo.mp4"
 
 # Distancia (em frames) entre keyframes. A 30fps, FRAME_STEP=3 ~ 0.1s.
-# Baseline maior = movimento maior entre frames = matriz essencial mais
-# estavel. Se ficar ruidoso, aumente; se pular demais, diminua.
 FRAME_STEP = 3
 
-# Apos MAX_SKIP falhas seguidas, ressincroniza o keyframe (avanca prev_gray
-# para o frame atual). Evita que um trecho ruim (virada/turbidez) congele o
-# keyframe no passado e trave a odometria pelo resto do video.
+# Apos MAX_SKIP falhas seguidas, ressincroniza o keyframe no frame atual.
 MAX_SKIP = 2
 
-# Limite de frames a processar (None = video inteiro).
+# None = video inteiro.
 MAX_FRAMES = None
 
-# fx = fy = FX_SCALE * largura. Isto e um CHUTE: o ideal e calibrar a
-# camera (de preferencia dentro d'agua) e substituir K por valores reais.
+# fx = fy = FX_SCALE * largura. Isto e um CHUTE: falta calibrar a camera.
 FX_SCALE = 1.0
 
 METHODS = ["ORB", "SIFT", "KLT"]
 COLORS = {"ORB": "blue", "SIFT": "green", "KLT": "red"}
-# ========================================================
 
 
 def get_output_path():
@@ -60,7 +53,6 @@ def run_method(method):
 
     vo = VisualOdometry(K, method=method)
 
-    # A trajetoria SEMPRE comeca na origem (todos os metodos partem de 0,0,0).
     trajectory = [(0.0, 0.0, 0.0, 0)]
 
     frame_idx = 0
@@ -81,15 +73,11 @@ def run_method(method):
         t, _, ok = vo.process_frame(prev_gray, gray)
 
         if ok:
-            # So registra e avanca o keyframe quando a estimativa foi confiavel.
             trajectory.append((t[0][0], t[1][0], t[2][0], frame_idx))
             prev_gray = gray
             consec_fail = 0
             n_ok += 1
         else:
-            # Falha transiente: mantem prev_gray por ate MAX_SKIP tentativas
-            # (baseline cresce e tende a estabilizar). Se persistir, ressincroniza
-            # para nao travar a odometria no resto do video.
             n_fail += 1
             consec_fail += 1
             if consec_fail >= MAX_SKIP:
@@ -113,7 +101,6 @@ def main():
         print(f"\nRodando metodo: {method}")
         trajectories[method] = run_method(method)
 
-    # ------- resumo textual -------
     for method in METHODS:
         traj = trajectories[method]
         mid = len(traj) // 2
@@ -122,9 +109,7 @@ def main():
         print(f"  meio:   {np.round(traj[mid][:3], 3)}")
         print(f"  fim:    {np.round(traj[-1][:3], 3)}")
 
-    # ------- plot: 3D + 3 projecoes 2D -------
-    # As projecoes ajudam a identificar qual plano corresponde ao "mapa"
-    # real (depende da orientacao da camera: para frente vs para baixo).
+    # As projecoes 2D ajudam a identificar qual plano corresponde ao mapa real.
     fig = make_subplots(
         rows=2, cols=2,
         specs=[[{"type": "scene"}, {"type": "xy"}],

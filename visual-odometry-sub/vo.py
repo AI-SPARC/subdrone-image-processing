@@ -8,15 +8,8 @@ from methods.klt import KLTMethod
 
 class VisualOdometry:
     """
-    Odometria visual monocular.
-
-    IMPORTANTE (limitacao teorica): com uma unica camera e sem sensores,
-    a translacao 't' devolvida por recoverPose e SEMPRE unitaria (norma 1).
-    Ou seja, a escala absoluta e desconhecida e a escala relativa entre
-    passos NAO e recuperada aqui. A forma da trajetoria so sera fiel se a
-    velocidade do drone for aproximadamente constante entre keyframes.
-    Para escala relativa correta seria preciso triangular pontos 3D e
-    propagar a escala (proximo passo, se necessario).
+    Odometria visual monocular. A translacao devolvida por recoverPose e
+    unitaria, entao a escala nao e recuperavel.
     """
 
     def __init__(self, K, method="ORB", min_matches=50, min_inlier_ratio=0.3):
@@ -39,10 +32,7 @@ class VisualOdometry:
     def process_frame(self, prev_gray, gray):
         """
         Estima o movimento entre dois frames e acumula a pose global.
-
-        Retorna (t_total, R_total, ok):
-          ok=False quando o par de frames e degenerado/ruidoso e a pose
-          global e mantida inalterada (evita injetar lixo na trajetoria).
+        Retorna (t_total, R_total, ok); com ok=False a pose fica inalterada.
         """
         pts1, pts2 = self.method.get_matches(prev_gray, gray)
 
@@ -54,8 +44,7 @@ class VisualOdometry:
             method=cv2.RANSAC, prob=0.999, threshold=1.0
         )
 
-        # E precisa ser 3x3. Quando o RANSAC devolve varios candidatos
-        # empilhados (3n x 3) a cena costuma ser degenerada -> descarta.
+        # Varios candidatos empilhados (3n x 3) indicam cena degenerada.
         if E is None or E.shape != (3, 3):
             return self.t_total, self.R_total, False
 
@@ -72,7 +61,6 @@ class VisualOdometry:
         if n_good < self.min_matches * self.min_inlier_ratio:
             return self.t_total, self.R_total, False
 
-        # Acumulacao da pose (t unitario -> escala arbitraria).
         self.t_total = self.t_total + self.R_total @ t
         self.R_total = self.R_total @ R
 

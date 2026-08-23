@@ -7,9 +7,9 @@ class KLTMethod(BaseMethod):
 
     def __init__(self, fb_threshold=1.0, verbose=False):
         self.feature_params = dict(
-            maxCorners=500,        # menos pontos, mais seletivo
-            qualityLevel=0.05,     # exige corners mais fortes
-            minDistance=15,        # mais espalhados na imagem
+            maxCorners=500,
+            qualityLevel=0.05,
+            minDistance=15,
             blockSize=7)
 
         self.lk_params = dict(winSize=(21, 21),
@@ -28,12 +28,10 @@ class KLTMethod(BaseMethod):
         if p0 is None:
             return None, None
 
-        # Forward: prev -> atual
         p1, st1, _ = cv2.calcOpticalFlowPyrLK(prev_gray, gray, p0, None, **self.lk_params)
         if p1 is None:
             return None, None
 
-        # Backward: atual -> prev (para validar cada track)
         p0r, st2, _ = cv2.calcOpticalFlowPyrLK(gray, prev_gray, p1, None, **self.lk_params)
         if p0r is None:
             return None, None

@@ -1,8 +1,5 @@
 """
-Extrai as trajetorias 3D de um HTML gerado pelo Plotly (main.py) e gera:
-  - um PNG estatico com 3 projecoes 2D + resumo
-  - um .npz reutilizavel (para replotar sem reprocessar o video)
-
+Extrai as trajetorias 3D de um HTML gerado pelo main.py e salva PNG e .npz.
 Uso: python plot_from_html.py results/resultado_vo_6.html
 """
 import sys

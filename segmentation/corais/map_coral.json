@@ -1,0 +1,29 @@
+{
+  "_comentario": "Mapa de classes Coralscapes -> YOLO-seg. Chave = valor do pixel na mascara PNG, valor = id da classe YOLO. Valores nao listados sao ignorados (fundo, peixe, areia, humano, etc). IDs conferidos no dataset card oficial do EPFL-ECEO/coralscapes.",
+  "_classes_yolo": ["0 = coral_vivo", "1 = coral_branqueado", "2 = coral_morto"],
+
+  "_vivos": "10 classes: other coral alive, massive/meandering alive, millepora, branching alive, acropora alive, turbinaria, table acropora alive, pocillopora alive, stylophora alive, meandering alive",
+  "6": 0,
+  "17": 0,
+  "21": 0,
+  "22": 0,
+  "25": 0,
+  "27": 0,
+  "28": 0,
+  "31": 0,
+  "34": 0,
+  "36": 0,
+
+  "_branqueados": "4 classes: other coral bleached, massive/meandering bleached, branching bleached, meandering bleached",
+  "4": 1,
+  "16": 1,
+  "19": 1,
+  "33": 1,
+
+  "_mortos": "5 classes: other coral dead, branching dead, massive/meandering dead, table acropora dead, meandering dead",
+  "3": 2,
+  "20": 2,
+  "23": 2,
+  "32": 2,
+  "37": 2
+}

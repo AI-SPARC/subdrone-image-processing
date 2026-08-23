@@ -1,0 +1,32 @@
+# Configuracao do dataset de SEGMENTACAO de corais (formato Ultralytics YOLO-seg)
+#
+# ATENCAO: diferente do peixe-leao (deteccao/bbox), aqui os rotulos sao
+# POLIGONOS (mascaras), pois a analise de saude depende dos pixels internos.
+# Formato de cada linha do .txt: <classe> x1 y1 x2 y2 ... xn yn  (normalizados 0-1)
+#
+# Estrutura de pastas (gerada por exportar_coralscapes.py):
+#   corais/train/images  corais/train/labels
+#   corais/valid/images  corais/valid/labels
+#   corais/test/images   corais/test/labels
+
+train: ../train/images
+val: ../valid/images
+test: ../test/images
+
+# --- CONFIGURACAO ATIVA: 3 classes (dataset Coralscapes) ---
+#
+# Por que 3 classes e nao 1: a analise de cor (coral_health.py) NAO consegue
+# distinguir coral morto coberto de alga de coral saudavel - os dois tem
+# saturacao parecida. O Coralscapes traz o rotulo 'dead' de especialistas,
+# entao deixamos o MODELO aprender essa distincao, que a cor nao faz.
+#
+# A saude fina (saudavel / palido / branqueado) continua saindo da analise de
+# cor sobre as instancias de coral_vivo e coral_branqueado.
+nc: 3
+names: ['coral_vivo', 'coral_branqueado', 'coral_morto']
+
+# --- Alternativa: 1 classe generica, saude 100% derivada da cor ---
+# Use o map_coral.json ajustado (todos os IDs vivos e branqueados -> 0,
+# mortos excluidos) e troque para:
+# nc: 1
+# names: ['coral']

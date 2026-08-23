@@ -1,0 +1,11 @@
+{
+  "regra": "brilho",
+  "sat_healthy": 0.35,
+  "sat_pale": 0.18,
+  "val_bright": 0.55,
+  "bri_bleached": 0.71,
+  "bri_pale": 0.7,
+  "idx_bleached": 0.5,
+  "idx_pale": 0.42,
+  "val_dark": 0.22
+}

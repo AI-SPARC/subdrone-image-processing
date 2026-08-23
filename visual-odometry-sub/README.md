@@ -1,150 +1,133 @@
-# Visual Odometry Sub
+# Odometria visual subaquática
 
-Odometria visual **monocular** para vídeos gravados por um subdrone (ROV) embaixo
-d'água. A partir de **um único vídeo** (sem IMU, sem sensores de profundidade, sem
-estéreo), o código estima o caminho que o drone percorreu e desenha a trajetória.
+Odometria visual monocular para vídeos gravados por um ROV. A partir de um
+único vídeo, sem IMU, sensor de profundidade ou estéreo, o código estima o
+caminho percorrido pelo veículo e desenha a trajetória.
 
-## Limitação teórica importante (leia antes de interpretar resultados)
+O objetivo é comparar três estratégias clássicas de correspondência de pontos
+(ORB, SIFT e fluxo óptico KLT) em condições subaquáticas, onde baixo contraste,
+turbidez e dominância do azul degradam a detecção de features.
 
-Com uma única câmera e nenhum sensor, **a escala real do movimento é
-matematicamente irrecuperável**. O `cv2.recoverPose` sempre devolve a translação
-`t` como um vetor **unitário** (norma 1). Consequências:
+## Limitação de escala
 
-- A trajetória é válida apenas **a menos de escala** (a *forma* pode estar certa,
-  os tamanhos/distâncias não).
-- Como todo passo é forçado a ter comprimento 1, a **escala relativa** entre
-  passos também se perde. A forma só é fiel se a velocidade do drone for
+Com uma única câmera e nenhum sensor auxiliar, a escala real do movimento é
+matematicamente irrecuperável. O `cv2.recoverPose` devolve a translação como
+vetor unitário, o que traz duas consequências:
+
+- A trajetória é válida apenas a menos de escala. A forma pode estar correta,
+  mas as distâncias não.
+- Como todo passo é forçado a ter comprimento 1, a escala relativa entre passos
+  também se perde. A forma só é fiel se a velocidade do veículo for
   aproximadamente constante entre keyframes.
 
-Para escala correta seria preciso informação extra (estéreo, IMU/pressão,
-altímetro, ou um objeto de tamanho conhecido na cena) ou propagação de escala por
-triangulação (ver "Próximos passos").
+Recuperar a escala exigiria informação adicional (estéreo, IMU, sensor de
+pressão, ou um objeto de tamanho conhecido na cena) ou propagação de escala por
+triangulação.
 
-## Como funciona (pipeline)
+## Pipeline
 
-1. **Pré-processamento do vídeo** (`preprocess_videos.py`, via ffmpeg): converte os
-   vídeos brutos em `dataset/raw/` para `dataset/processed/`, padronizando
-   resolução (1280px de largura), FPS (30) e removendo o áudio.
-2. **Pré-processamento por frame** (`utils.py::preprocess_frame`): redimensiona para
-   960px, converte para escala de cinza, aplica **CLAHE** (equalização adaptativa,
-   essencial em cena subaquática de baixo contraste) e uma leve suavização.
-3. **Detecção/casamento de features** (`methods/`): para cada par de frames,
-   extrai correspondências de pontos por um de três métodos.
-4. **Estimativa de movimento** (`vo.py`): calcula a **matriz essencial** com RANSAC,
-   filtra inliers e recupera rotação `R` e translação `t` (unitária) com
-   `recoverPose`. Acumula a pose global (`R_total`, `t_total`).
-5. **Trajetória + plot** (`main.py`): percorre o vídeo em **keyframes**, acumula as
-   posições e gera um HTML interativo (Plotly) com 3D + 3 projeções 2D.
-6. **Visualização estática** (`plot_from_html.py`): extrai as trajetórias do HTML e
-   gera um PNG e um `.npz` reutilizável.
+1. `preprocess_videos.py` converte os vídeos de `dataset/raw/` para
+   `dataset/processed/` via ffmpeg, padronizando a largura em 1280 px e a taxa
+   em 30 fps, e removendo o áudio.
+2. `utils.py` prepara cada frame: redimensiona para 960 px, converte para
+   escala de cinza, aplica CLAHE e uma suavização leve. O CLAHE é o passo mais
+   relevante aqui, dado o baixo contraste das cenas.
+3. Os módulos em `methods/` extraem correspondências entre pares de frames.
+4. `vo.py` calcula a matriz essencial com RANSAC, filtra os inliers e recupera
+   rotação e translação com `recoverPose`, acumulando a pose global.
+5. `main.py` percorre o vídeo em keyframes, acumula as posições e gera um HTML
+   interativo com a vista 3D e três projeções 2D.
+6. `plot_from_html.py` extrai as trajetórias do HTML e gera um PNG estático e
+   um `.npz` reutilizável, permitindo replotar sem reprocessar o vídeo.
 
-## Estrutura dos arquivos
+## Métodos comparados
 
-| Arquivo | Papel |
-|---|---|
-| `preprocess_videos.py` | Converte vídeos de `dataset/raw` → `dataset/processed` (ffmpeg). |
-| `utils.py` | `preprocess_frame`: resize + grayscale + CLAHE + blur. |
-| `methods/base.py` | Interface `BaseMethod.get_matches(prev, cur) -> (pts1, pts2)`. |
-| `methods/orb.py` | ORB + BFMatcher (Hamming) + **ratio test de Lowe**. |
-| `methods/sift.py` | SIFT + BFMatcher (L2) + **ratio test de Lowe**. |
-| `methods/klt.py` | `goodFeaturesToTrack` + fluxo óptico Lucas-Kanade + **forward-backward check**. |
-| `vo.py` | `VisualOdometry`: essencial + `recoverPose` + acúmulo de pose, com guardas. |
-| `main.py` | Loop principal, seleção de keyframes, geração do HTML. |
-| `plot_from_html.py` | Extrai trajetórias do HTML → PNG + `.npz`. |
+| método | abordagem | comportamento observado |
+|---|---|---|
+| ORB | descritor binário, BFMatcher com distância de Hamming e ratio test de Lowe | diverge dos demais; pouco confiável em cena de baixa textura |
+| SIFT | descritor de gradientes, BFMatcher L2 e ratio test de Lowe | mais estável; método preferido |
+| KLT | cantos de Shi-Tomasi e fluxo óptico Lucas-Kanade com verificação ida e volta | bom com movimento suave |
 
-## Métodos de correspondência
+## Resultados
 
-- **ORB** — rápido, descritor binário. **Pouco confiável debaixo d'água** (baixo
-  contraste/textura); tende a divergir. Mantido só para comparação.
-- **SIFT** — mais robusto em cena subaquática; **método recomendado**.
-- **KLT** — fluxo óptico; bom com movimento suave. Usa forward-backward check para
-  descartar tracks ruins.
+A avaliação é qualitativa. Não há ground truth de pose para o vídeo utilizado,
+o que impede calcular erro absoluto de trajetória (ATE) ou erro relativo (RPE).
+O que se compara é a concordância entre métodos e a coerência da forma.
+
+Na execução sobre o vídeo completo, com keyframe a cada 3 frames, os três
+métodos produziram entre 876 e 939 poses. SIFT e KLT geram trajetórias
+semelhantes na projeção de mapa (X–Z), enquanto o ORB se afasta
+progressivamente dos outros dois. Como todos partem da origem e acumulam passos
+unitários, a distância percorrida em unidades arbitrárias é aproximadamente
+igual ao número de poses.
+
+A deriva acumulada é visível: os métodos concordam no início do trajeto e se
+separam ao longo do tempo, comportamento esperado de odometria quadro a quadro
+sem otimização global ou fechamento de loop.
+
+Obter uma medida quantitativa exigiria uma sequência com pose de referência,
+seja de um dataset de benchmark, seja de uma filmagem com trajeto controlado.
+
+## Matriz intrínseca
+
+A matriz `K` é montada em `main.py` a partir de uma estimativa de distância
+focal (`FX_SCALE`) e do centro da imagem. A matriz essencial e o `recoverPose`
+são bastante sensíveis a `K`, e a refração entre água, vidro e ar altera o foco
+efetivo. Para resultados confiáveis a câmera deve ser calibrada com tabuleiro
+de xadrez, de preferência submersa, e `K` substituída pelos valores reais.
 
 ## Como rodar
 
-Pré-requisitos: [uv](https://docs.astral.sh/uv/) e **ffmpeg** instalado
-(ajuste o caminho do ffmpeg em `preprocess_videos.py` se necessário).
+Requer [uv](https://docs.astral.sh/uv/) e ffmpeg instalado. O caminho do
+ffmpeg está definido em `preprocess_videos.py`.
 
 ```bash
-# 1. Instala dependências no ambiente virtual
 uv sync
-
-# 2. (uma vez) Converte os vídeos brutos
 uv run python preprocess_videos.py
-
-# 3. Roda a odometria visual e gera o HTML interativo em results/
 uv run python main.py
-
-# 4. (opcional) Gera PNG estático + .npz a partir de um HTML já criado
 uv run python plot_from_html.py results/resultado_vo_6.html
 ```
 
-Os resultados vão para `results/resultado_vo_N.html` (numerado
-automaticamente), além de `results/trajetorias.png` e
-`results/trajectories.npz` quando se usa o `plot_from_html.py`.
+Os resultados são gravados em `results/resultado_vo_N.html`, numerados
+automaticamente.
 
-## Parâmetros (topo do `main.py`)
+## Parâmetros
 
-| Parâmetro | Descrição |
+Definidos no topo de `main.py`:
+
+| parâmetro | descrição |
 |---|---|
-| `VIDEO_PATH` | Caminho do vídeo processado a analisar. |
-| `FRAME_STEP` | Distância (em frames) entre keyframes. Maior = baseline maior/estimativa mais estável; menor = mais detalhe. |
-| `MAX_SKIP` | Após N falhas seguidas, **ressincroniza** o keyframe (evita travar em trechos ruins). |
-| `MAX_FRAMES` | Limita quantos frames processar (`None` = vídeo inteiro). Útil para testes rápidos. |
-| `FX_SCALE` | `fx = fy = FX_SCALE * largura`. **Chute** da distância focal — o ideal é calibrar a câmera. |
-| `METHODS` | Lista de métodos a comparar (`ORB`, `SIFT`, `KLT`). |
+| `VIDEO_PATH` | vídeo processado a analisar |
+| `FRAME_STEP` | distância em frames entre keyframes; valores maiores dão baseline maior e estimativa mais estável |
+| `MAX_SKIP` | número de falhas consecutivas antes de ressincronizar o keyframe |
+| `MAX_FRAMES` | limite de frames a processar; `None` processa o vídeo inteiro |
+| `FX_SCALE` | fator da distância focal, com `fx = fy = FX_SCALE × largura` |
+| `METHODS` | métodos a comparar |
 
-## Matriz intrínseca (K)
+A ressincronização do keyframe existe porque um trecho ruim do vídeo, como uma
+virada brusca ou turbidez, pode fazer a estimativa falhar repetidamente. Sem
+ela, o keyframe fica preso no passado e a odometria não se recupera pelo resto
+do vídeo.
 
-`K` é montada em `main.py` a partir de um chute de foco (`FX_SCALE`) e do centro da
-imagem. A matriz essencial e o `recoverPose` são **muito sensíveis a `K`**, e a
-refração água→vidro→ar altera o foco efetivo. Para resultados confiáveis, calibre a
-câmera (de preferência dentro d'água, com tabuleiro de xadrez) e substitua `K`.
+## Estrutura
 
-## Alterações recentes
+| arquivo | papel |
+|---|---|
+| `main.py` | loop principal, seleção de keyframes, geração do HTML |
+| `vo.py` | matriz essencial, `recoverPose` e acúmulo de pose |
+| `utils.py` | preparo de cada frame |
+| `preprocess_videos.py` | conversão dos vídeos via ffmpeg |
+| `plot_from_html.py` | extração das trajetórias e plot estático |
+| `methods/base.py` | interface comum dos métodos |
+| `methods/orb.py` | correspondência por ORB |
+| `methods/sift.py` | correspondência por SIFT |
+| `methods/klt.py` | rastreamento por fluxo óptico |
 
-Correções e melhorias sobre a primeira versão do pipeline:
+## Possíveis evoluções
 
-- **`vo.py`**: filtra os **inliers** do RANSAC antes do `recoverPose`; descarta
-  pares degenerados (matriz essencial não-3×3, poucos inliers, cheirality ruim);
-  em caso de falha, **mantém a pose anterior** em vez de injetar ruído; passou a
-  retornar uma flag de sucesso.
-- **`methods/orb.py` e `methods/sift.py`**: trocado `crossCheck` por
-  **knnMatch + ratio test de Lowe**, reduzindo muito os outliers.
-- **`methods/klt.py`**: adicionado **forward-backward check** (rastreia ida e volta
-  e descarta tracks inconsistentes).
-- **`main.py`**:
-  - A trajetória agora **começa sempre na origem** `(0,0,0)` — antes os métodos
-    "nasciam" em pontos diferentes no gráfico.
-  - Removido um **resize redundante** (o frame era reduzido e depois ampliado de
-    volta, perdendo qualidade sem efeito prático).
-  - Adicionada **seleção de keyframes** (`FRAME_STEP`) com **ressincronização**
-    (`MAX_SKIP`) — corrige um bug em que um trecho ruim do vídeo (virada/turbidez)
-    congelava o keyframe no passado e travava a odometria pelo resto do vídeo.
-  - Processa o **vídeo inteiro** e gera **3D + 3 projeções 2D** (Topo X-Z, Frontal
-    X-Y, Lateral Z-Y).
-- **`plot_from_html.py`** (novo): extrai as trajetórias do HTML do Plotly e gera
-  PNG estático + `.npz` reutilizável (replot sem reprocessar o vídeo).
-- Dependência **matplotlib** adicionada.
-
-## Observações dos resultados
-
-- **SIFT** e **KLT** produzem trajetórias parecidas entre si no plano de mapa
-  (X-Z) — bom indício de que capturam o movimento real.
-- **ORB** diverge dos demais (confirma que não é adequado ao ambiente
-  subaquático).
-- Há **deriva (drift)** acumulada: os métodos concordam no início e se separam ao
-  longo do tempo — limitação típica de VO quadro-a-quadro sem otimização global.
-
-## Próximos passos (sem deep learning)
-
-1. Fixar **SIFT** como método principal e remover/depriorizar o ORB.
-2. **Propagação de escala por triangulação** (corrige distorção de forma quando a
-   velocidade varia).
-3. **Janela de otimização / bundle adjustment local**, ou migrar para
-   **ORB-SLAM3** (tem fechamento de loop e corrige deriva se o drone revisitar um
-   ponto).
-
-Em último caso, abordagens de **deep learning** (ex.: DROID-SLAM, DPVO) tendem a
-ser bem mais robustas a baixa textura/turbidez, ao custo de exigir GPU.
-```
+Propagação de escala por triangulação corrigiria a distorção de forma quando a
+velocidade varia. Uma janela de otimização local ou a migração para ORB-SLAM3
+trataria a deriva, já que o fechamento de loop corrige o acúmulo quando o
+veículo revisita um ponto. Abordagens baseadas em aprendizado profundo, como
+DROID-SLAM ou DPVO, tendem a ser mais robustas a baixa textura e turbidez, ao
+custo de exigir GPU.

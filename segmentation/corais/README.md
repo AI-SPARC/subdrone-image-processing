@@ -42,11 +42,14 @@ fundo. Após a conversão para o formato YOLO-seg:
 
 | split | imagens | polígonos | vivo | branqueado | morto |
 |---|---|---|---|---|---|
-| train | 1.517 | 26.911 | 21.783 | 1.063 | 4.065 |
-| valid | 166 | 3.180 | 1.979 | 335 | 866 |
-| test | 392 | 6.357 | — | — | — |
+| train | 1.517 | 15.274 | 12.353 | 551 | 2.370 |
+| valid | 166 | 1.728 | 1.094 | 129 | 505 |
+| test | 392 | 3.132 | 2.363 | 142 | 627 |
 
-A classe `coral_branqueado` representa apenas 4% das instâncias de treino.
+Nem toda imagem sobrevive ao filtro de área: no treino, 1.392 das 1.517 ficam
+com pelo menos um polígono, e as demais entram como fundo.
+
+A classe `coral_branqueado` representa 3,6% das instâncias de treino.
 Esse desbalanceamento é relevante na avaliação: o mAP global pode ficar alto
 enquanto a classe rara vai mal, então o recall por classe deve ser observado
 separadamente.
@@ -56,10 +59,15 @@ manter os 2048 px originais aumentava o custo de memória e o tempo de
 validação sem benefício, já que as máscaras previstas são reescaladas para a
 resolução original a cada época.
 
-O filtro `--min-area 1500` descarta manchas menores que cerca de 0,07% da
-área da imagem. Aproximadamente 9% das instâncias ficam abaixo de 0,1% da
-área e, na resolução de treino, correspondem a objetos de aproximadamente
-17×17 px.
+O filtro `--min-area 1500` é aplicado sobre a máscara já exportada, em
+1024×512, e descarta manchas menores que cerca de 0,29% da área da imagem —
+aproximadamente 39×39 px, ou 24×24 px na resolução de treino.
+
+O valor é absoluto, em pixels, então a fração de área que ele corta depende da
+resolução de exportação. Trocar `--max-width` sem regerar os rótulos deixa o
+conjunto inconsistente: as coordenadas YOLO são normalizadas e continuam
+carregando sem erro, mas passam a descrever um recorte de instâncias diferente
+do que o filtro produziria naquela resolução.
 
 ## Análise de saúde por cor
 
